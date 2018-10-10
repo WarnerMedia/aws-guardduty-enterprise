@@ -3,5 +3,8 @@
 webhook.txt
 SAM/*
 cloudformation/GuardDuty-to-Slack js.yaml
+cloudformation/*Manifest*
+lambda/*.zip
+lambda/__pycache__/*
 sample_event/*
 config.json

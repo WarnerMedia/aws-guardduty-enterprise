@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy Lambda and other resources for AWS GuardDuty Management
+
+Parameters:
+  pEmailTo:
+    Description: Who gets email notifications
+    Type: String
+
+  pDeployBucket:
+    Description: Name of a bucket to store the lambda zip
+    Type: String
+
+  pLambdaZipFile:
+    Description: File name for the lambda zip
+    Type: String
+
+  pPayerRole:
+    Description: Name of the role the lambda needs to assume into the payer account to invite accounts to GuardDuty
+    Type: String
+
+  pAssumeRole:
+    Description: Name of the role the lambda needs to assume to do cross account access and accept GuardDuty invites
+    Type: String
+
+  pInviteMessage:
+    Description: Message to send in the GuardDuty invite
+    Type: String
+    Default: Parent Account is enabling GuardDuty. No Action Required.
+
+  pAlarmTopicArn:
+    Description: Topic to send alarm alerts to
+    Type: String
+
+Resources:
+  NewAccountSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub "Topic triggered when new account is added"
+      Subscription:
+      - Endpoint: !GetAtt [EnableGuardDutyLambdaFunction, Arn]
+        Protocol: lambda
+      TopicName:  !Sub "New-Account-${AWS::StackName}"
+
+  GuardDutyLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+        - Sid: EmuLambdaTestTrust
+          Effect: Allow
+          Principal:
+            AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: LambdaLogging
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Resource: '*'
+            Action:
+            - logs:*
+            Effect: Allow
+      - PolicyName: AssumeCrossAccountRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - sts:AssumeRole
+            Resource: !Sub "arn:aws:iam::*:role/${pAssumeRole}"
+      - PolicyName: AssumePayerAccountRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - sts:AssumeRole
+            Resource: !Sub "arn:aws:iam::*:role/${pPayerRole}"
+      - PolicyName: DescribeOrganization
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: organizations:DescribeOrganization
+            Resource: '*'
+      - PolicyName: DescribeRegions
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: ec2:DescribeRegions
+            Resource: '*'
+
+  EnableGuardDutyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-enable-guardduty"
+      Description: Enable GuardDuty for a given account
+      Handler: enable_guardduty.handler
+      Runtime: python3.6
+      Timeout: 300
+      MemorySize: 768
+      Role: !GetAtt GuardDutyLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref pDeployBucket
+        S3Key: !Ref pLambdaZipFile
+      Environment:
+        Variables:
+          ASSUME_ROLE: !Ref pAssumeRole
+          PAYER_ROLE: !Ref pPayerRole
+          INVITE_MESSAGE: !Ref pInviteMessage
+  EnableGuardDutyLambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EnableGuardDutyLambdaFunction.Arn
+      Principal: sns.amazonaws.com
+      Action: lambda:invokeFunction
+  EnableGuardDutyLambdaFunctionSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !GetAtt [EnableGuardDutyLambdaFunction, Arn]
+      Protocol: lambda
+      TopicArn: !Ref 'NewAccountSnsTopic'
+
+Outputs:
+  StackName:
+    Value: !Ref AWS::StackName
+  LambdaBundle:
+    Value: !Ref pLambdaZipFile
