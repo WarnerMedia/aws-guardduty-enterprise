@@ -14,11 +14,11 @@ Parameters:
     Description: File name for the lambda zip
     Type: String
 
-  pPayerRole:
-    Description: Name of the role the lambda needs to assume into the payer account to invite accounts to GuardDuty
+  pAuditRole:
+    Description: Name of the role the lambda needs to assume into the payer account to describe account
     Type: String
 
-  pAssumeRole:
+  pAcceptRole:
     Description: Name of the role the lambda needs to assume to do cross account access and accept GuardDuty invites
     Type: String
 
@@ -75,7 +75,7 @@ Resources:
           - Effect: "Allow"
             Action:
             - sts:AssumeRole
-            Resource: !Sub "arn:aws:iam::*:role/${pAssumeRole}"
+            Resource: !Sub "arn:aws:iam::*:role/${pAcceptRole}"
       - PolicyName: AssumePayerAccountRole
         PolicyDocument:
           Version: '2012-10-17'
@@ -83,20 +83,25 @@ Resources:
           - Effect: "Allow"
             Action:
             - sts:AssumeRole
-            Resource: !Sub "arn:aws:iam::*:role/${pPayerRole}"
-      - PolicyName: DescribeOrganization
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action: organizations:DescribeOrganization
-            Resource: '*'
+            Resource: !Sub "arn:aws:iam::*:role/${pAuditRole}"
       - PolicyName: DescribeRegions
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
           - Effect: Allow
             Action: ec2:DescribeRegions
+            Resource: '*'
+      - PolicyName: GuardDutyPermissions
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - guardduty:ListDetectors
+              - guardduty:CreateDetector
+              - guardduty:ListMembers
+              - guardduty:CreateMembers
+              - guardduty:InviteMembers
             Resource: '*'
 
   EnableGuardDutyLambdaFunction:
@@ -114,8 +119,8 @@ Resources:
         S3Key: !Ref pLambdaZipFile
       Environment:
         Variables:
-          ASSUME_ROLE: !Ref pAssumeRole
-          PAYER_ROLE: !Ref pPayerRole
+          ACCEPT_ROLE: !Ref pAcceptRole
+          AUDIT_ROLE: !Ref pAuditRole
           INVITE_MESSAGE: !Ref pInviteMessage
   EnableGuardDutyLambdaFunctionPermission:
     Type: AWS::Lambda::Permission
