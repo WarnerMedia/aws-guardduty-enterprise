@@ -144,7 +144,7 @@ def invite_account(account, detector_id, gd_client, event, region):
     gd_client.invite_members(
         AccountIds=[account['Id']],
         DetectorId=detector_id,
-        Message=event["message"],
+        DisableEmailNotification=True,
     )
 
 
@@ -241,9 +241,9 @@ def describe_account(event):
 
 
 def process_message(message):
-    if "message" not in message:
-        logger.info(f"message['message'] not specified; default = {os.environ['INVITE_MESSAGE']}")
-        event["message"] = os.environ['INVITE_MESSAGE']
+    # if "message" not in message:
+    #     logger.info(f"message['message'] not specified; default = {os.environ['INVITE_MESSAGE']}")
+    #     event["message"] = os.environ['INVITE_MESSAGE']
 
     if "dry_run" not in message:
         logger.info("message['dry_run'] not specified; default = False")
@@ -265,11 +265,11 @@ if __name__ == '__main__':
     #
     # Required
     #
-    parser.add_argument("--account_id", help="AWS Account ID")
-    parser.add_argument("--audit_role", help="Name of role to assume in payer account")
-    parser.add_argument("--accept_role", help="Name of the role to assume in child accounts")
+    parser.add_argument("--account_id", help="AWS Account ID", required=True)
+    parser.add_argument("--audit_role", help="Name of role to assume in payer account", required=True)
+    parser.add_argument("--accept_role", help="Name of the role to assume in child accounts", required=True)
     parser.add_argument("--region", help="Only run in this region (list)")
-    parser.add_argument("--message", help="Custom Message sent to child as part of invite")
+    # parser.add_argument("--message", help="Custom Message sent to child as part of invite")
 
     parser.add_argument("--accept_only", help="Accept existing invite", action='store_true')
     parser.add_argument("--dry-run", help="Don't actually do it", action='store_true')
@@ -297,8 +297,8 @@ if __name__ == '__main__':
     message = {}
     if args.account_id:
         message['account_id'] = args.account_id
-    if args.message:
-        message['message'] = args.message
+    # if args.message:
+    #     message['message'] = args.message
     if args.dry_run:
         message['dry_run'] = True
     if args.region:
