@@ -84,7 +84,7 @@ def process_region(args, region):
             # exit(1)
             continue
         if gd_status[a['Id']]['RelationshipStatus'] == "Enabled":
-            print("{}({}) is already enabled for GuardDuty in {}".format(a['Name'], a['Id'], region))
+            # print("{}({}) is already enabled for GuardDuty in {}".format(a['Name'], a['Id'], region))
             continue
         print("{}({}) is in unexpected state {} for GuardDuty in {}".format(a['Name'], a['Id'], gd_status[a['Id']]['RelationshipStatus'], region))
         return()
@@ -107,7 +107,7 @@ def invite_account(account, detector_id, region, message):
     response = client.invite_members(
         AccountIds=[ account['Id'] ],
         DetectorId=detector_id,
-        Message=message
+        DisableEmailNotification=True
     )
 
 def accept_invite(account, role_name, region):
