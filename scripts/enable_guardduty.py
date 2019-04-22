@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 import base64
 import time
 import os
@@ -65,6 +65,10 @@ def process_region(args, region):
     except ClientError as e:
         logger.error("Unable to list detectors in region {}. Skipping this region.".format(region))
         return(False)
+    except EndpointConnectionError as e:
+        logger.error("Unable to list detectors in region {}. Skipping this region.".format(region))
+        return(False)
+
 
     gd_status = get_all_members(region, gd_client, detector_id)
 
