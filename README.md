@@ -4,11 +4,12 @@ Manage GuardDuty At Enterprise Scale
 
 ## What this repo does
 1. Deploy a lambda to enable GuardDuty for new accounts.
+2. Deploy a Lambda to take GuardDuty CloudWatch Events and forward to an Splunk HTTP Event Collector (HEC) of your choice
 
 More stuff to come later. Like Splunk forwarding, or Security Hub. Maybe....
 
 
-## Deployment
+## Deployment of the GuardDuty Enable (and Master/Member invitation) Lambda
 
 1. Install cfn-deploy
 ```bash
@@ -16,7 +17,7 @@ pip3 install cftdeploy
 ```
 2. Make the Manifest
 ```bash
-make BUCKET=SETME manifest
+make BUCKET=SETME enable-manifest
 ```
 3. Edit the Manifest
     1. Remove the lines for pLambdaZipFile and pDeployBucket as they will be set by the Makefile
@@ -25,12 +26,36 @@ make BUCKET=SETME manifest
     3. Replace None with the new account topic if you want to subscribe the lambda to a new account topic
 4. Validate the manifest
 ```bash
-make BUCKET=SETME cfn-validate-manifest
+make BUCKET=SETME enable-validate-manifest
 ```
 5. Deploy!
 ```bash
-make BUCKET=SETME deploy
+make BUCKET=SETME enable-deploy
 ```
+
+
+## Deployment of the GuardDuty To Splunk Lambdas
+
+This is Deployed via the SAM application for Splunk logging. See the [AWS Console Page](https://console.aws.amazon.com/lambda/home?region=us-east-1#/create/app?applicationId=arn:aws:serverlessrepo:us-east-1:708419456681:applications/splunk-logging) for more info.
+
+The makefile will deploy it to all regions
+
+1. Install cfn-deploy
+```bash
+pip3 install cftdeploy
+```
+2. Make the Manifest
+```bash
+make BUCKET=SETME splunk-manifest
+```
+3. Edit the Manifest
+    1. SET the HEC Token and URL in the Manifest
+    2. Remove the region
+5. Deploy to all regions
+```bash
+make BUCKET=SETME splunk-deploy
+```
+
 
 
 ## Required format for the SNS Message for the Enable Lambda:

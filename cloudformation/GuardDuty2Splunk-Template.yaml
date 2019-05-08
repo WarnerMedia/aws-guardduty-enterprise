@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a GuardDuty CloudWatchEvent and SAM Application for sending GuardDuty Events to Splunk HEC
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  SplunkHttpEventCollectorURL:
+    Type: String
+    Description: URL address of your Splunk HTTP event collector endpoint
+
+  SplunkHttpEventCollectorToken:
+    Type: String
+    Description: Token of your Splunk HTTP event collector endpoint
+
+Resources:
+
+  SplunkToHECLambda:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:708419456681:applications/splunk-logging
+        SemanticVersion: 1.0.0
+      Parameters:
+        # Token of your Splunk HTTP event collector endpoint
+        SplunkHttpEventCollectorToken: !Ref SplunkHttpEventCollectorToken
+        # URL address of your Splunk HTTP event collector endpoint
+        SplunkHttpEventCollectorURL: !Ref  SplunkHttpEventCollectorURL
+
+  GuardDutyCloudWatchEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: GuardDutyRuleForSplunk
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.guardduty
+      Targets:
+        - Arn: !GetAtt SplunkToHECLambda.Outputs.SplunkLoggingFunction
+          Id: GuardDutyFunction
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      FunctionName: !GetAtt SplunkToHECLambda.Outputs.SplunkLoggingFunction
+      SourceArn: !GetAtt GuardDutyCloudWatchEvent.Arn
+
+Outputs:
+  SplunkLoggingFunction:
+    Description: Splunk Logging Lambda Function ARN
+    Value: !GetAtt SplunkToHECLambda.Outputs.SplunkLoggingFunction

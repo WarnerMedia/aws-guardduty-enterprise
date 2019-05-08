@@ -9,22 +9,27 @@ ifndef version
 endif
 
 # Specific to this stack
-export FULL_STACK_NAME=GuardDuty-Enable
+export ENABLE_STACK_NAME ?= GuardDuty-Enable
+export SPLUNK_STACK_NAME ?= GuardDuty2Splunk
+
 # Filename for the CFT to deploy
-export STACK_TEMPLATE=cloudformation/GuardDuty-Enable-Template.yaml
+export ENABLE_STACK_TEMPLATE=cloudformation/GuardDuty-Enable-Template.yaml
+export SPLUNK_STACK_TEMPLATE=cloudformation/GuardDuty2Splunk-Template.yaml
+
 
 # Name of the Zip file with all the function code and dependencies
-export LAMBDA_PACKAGE=$(FULL_STACK_NAME)-lambda-$(version).zip
+export LAMBDA_PACKAGE=$(ENABLE_STACK_NAME)-lambda-$(version).zip
 
 # Name of the manifest file.
-export manifest=cloudformation/$(FULL_STACK_NAME)-Manifest.yaml
+export ENABLE_MANIFEST=cloudformation/$(ENABLE_STACK_NAME)-Manifest.yaml
+export SPLUNK_MANIFEST=cloudformation/$(SPLUNK_STACK_NAME)-Manifest.yaml
 
 # location in the Antiope bucket where we drop lambda-packages
 export OBJECT_KEY=deploy-packages/$(LAMBDA_PACKAGE)
 
 
 # List of all the functions deployed by this stack. Required for "make update" to work.
-FUNCTIONS = $(FULL_STACK_NAME)-enable-guardduty
+FUNCTIONS = $(ENABLE_STACK_NAME)-enable-guardduty
 
 .PHONY: $(FUNCTIONS)
 
@@ -33,7 +38,7 @@ test: cfn-validate
 	cd lambda && $(MAKE) test
 
 # Do everything
-deploy: package upload cfn-deploy
+enable-deploy: package upload enable-cfn-deploy
 
 clean:
 	cd lambda && $(MAKE) clean
@@ -43,19 +48,39 @@ clean:
 #
 
 # target to generate a manifest file. Only do this once
-manifest:
-	cft-generate-manifest -t $(STACK_TEMPLATE) -m $(manifest) --stack-name $(FULL_STACK_NAME) --region $(AWS_DEFAULT_REGION)
+enable-manifest:
+	cft-generate-manifest -t $(ENABLE_STACK_TEMPLATE) -m $(ENABLE_MANIFEST) --stack-name $(ENABLE_STACK_NAME) --region $(AWS_DEFAULT_REGION)
+
+
 
 # Validate the template
-cfn-validate: $(STACK_TEMPLATE)
-	cft-validate --region $(AWS_DEFAULT_REGION) -t $(STACK_TEMPLATE)
+cfn-validate: $(ENABLE_STACK_TEMPLATE) $(SPLUNK_STACK_TEMPLATE)
+	cft-validate --region $(AWS_DEFAULT_REGION) -t $(ENABLE_STACK_TEMPLATE)
+	cft-validate --region $(AWS_DEFAULT_REGION) -t $(SPLUNK_STACK_TEMPLATE)
 
-cfn-validate-manifest: cfn-validate
-	cft-validate-manifest --region $(AWS_DEFAULT_REGION) -m $(manifest) pLambdaZipFile=$(OBJECT_KEY) pDeployBucket=$(BUCKET)
+
+# Enable Lambda Stack Targets
+
+enable-validate-manifest: cfn-validate
+	cft-validate-manifest --region $(AWS_DEFAULT_REGION) -m $(ENABLE_MANIFEST) pLambdaZipFile=$(OBJECT_KEY) pDeployBucket=$(BUCKET)
 
 # Deploy the stack
-cfn-deploy: cfn-validate $(manifest)
-	cft-deploy -m $(manifest)  pLambdaZipFile=$(OBJECT_KEY) pDeployBucket=$(BUCKET)  --force
+enable-cfn-deploy: cfn-validate $(ENABLE_MANIFEST)
+	cft-deploy -m $(ENABLE_MANIFEST)  pLambdaZipFile=$(OBJECT_KEY) pDeployBucket=$(BUCKET)  --force
+
+#
+# Splunk Deploy Stack Target
+#
+splunk-manifest:
+	cft-generate-manifest -t $(SPLUNK_STACK_TEMPLATE) -m $(SPLUNK_MANIFEST) --stack-name $(SPLUNK_STACK_NAME)
+
+splunk-deploy: cfn-validate $(SPLUNK_MANIFEST)
+	$(eval REGIONS := $(shell aws ec2 describe-regions --output text | awk '{print $$NF}'))
+	for r in $(REGIONS) ; do \
+	  cft-deploy -m $(SPLUNK_MANIFEST)  --override-region $$r  --force ; \
+	done
+
+
 
 #
 # Lambda Targets
