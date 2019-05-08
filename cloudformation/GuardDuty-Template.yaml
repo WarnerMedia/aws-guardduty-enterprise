@@ -2,9 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Deploy Lambda and other resources for AWS GuardDuty Management
 
 Parameters:
-  pEmailTo:
-    Description: Who gets email notifications
-    Type: String
 
   pDeployBucket:
     Description: Name of a bucket to store the lambda zip
@@ -22,26 +19,14 @@ Parameters:
     Description: Name of the role the lambda needs to assume to do cross account access and accept GuardDuty invites
     Type: String
 
-  pInviteMessage:
-    Description: Message to send in the GuardDuty invite
+  pNewAccountTopicArn:
+    Description: ARN of the Topic the enable GuardDuty Needs to subscribe to
     Type: String
-    Default: Parent Account is enabling GuardDuty. No Action Required.
-
-  pAlarmTopicArn:
-    Description: Topic to send alarm alerts to
-    Type: String
+    Default: None
 
 Resources:
-  NewAccountSnsTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      DisplayName: !Sub "Topic triggered when new account is added"
-      Subscription:
-      - Endpoint: !GetAtt [EnableGuardDutyLambdaFunction, Arn]
-        Protocol: lambda
-      TopicName:  !Sub "New-Account-${AWS::StackName}"
 
-  GuardDutyLambdaRole:
+  EnableGuardDutyLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -53,11 +38,6 @@ Resources:
             - lambda.amazonaws.com
           Action:
           - sts:AssumeRole
-        - Sid: EmuLambdaTestTrust
-          Effect: Allow
-          Principal:
-            AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
-          Action: sts:AssumeRole
       Path: /
       Policies:
       - PolicyName: LambdaLogging
@@ -113,7 +93,7 @@ Resources:
       Runtime: python3.6
       Timeout: 300
       MemorySize: 768
-      Role: !GetAtt GuardDutyLambdaRole.Arn
+      Role: !GetAtt EnableGuardDutyLambdaRole.Arn
       Code:
         S3Bucket: !Ref pDeployBucket
         S3Key: !Ref pLambdaZipFile
@@ -121,19 +101,20 @@ Resources:
         Variables:
           ACCEPT_ROLE: !Ref pAcceptRole
           AUDIT_ROLE: !Ref pAuditRole
-          INVITE_MESSAGE: !Ref pInviteMessage
+
   EnableGuardDutyLambdaFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt EnableGuardDutyLambdaFunction.Arn
       Principal: sns.amazonaws.com
       Action: lambda:invokeFunction
+
   EnableGuardDutyLambdaFunctionSubscription:
     Type: AWS::SNS::Subscription
     Properties:
       Endpoint: !GetAtt [EnableGuardDutyLambdaFunction, Arn]
       Protocol: lambda
-      TopicArn: !Ref 'NewAccountSnsTopic'
+      TopicArn: !Ref pNewAccountTopicArn
 
 Outputs:
   StackName:
