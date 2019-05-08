@@ -24,6 +24,18 @@ Parameters:
     Type: String
     Default: None
 
+  pEmailFrom:
+    Description: SES Enabled email address to send the notifcation email from
+    Type: String
+
+  pEmailTo:
+    Description: SES Enabled email address to send the notifcation email to
+    Type: String
+
+
+Conditions:
+  Subscribe: !Not [!Equals [ !Ref pNewAccountTopicArn, None ]]
+
 Resources:
 
   EnableGuardDutyLambdaRole:
@@ -83,6 +95,14 @@ Resources:
               - guardduty:CreateMembers
               - guardduty:InviteMembers
             Resource: '*'
+      - PolicyName: SendEmails
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - ses:*
+            Resource: '*'
 
   EnableGuardDutyLambdaFunction:
     Type: AWS::Lambda::Function
@@ -101,9 +121,12 @@ Resources:
         Variables:
           ACCEPT_ROLE: !Ref pAcceptRole
           AUDIT_ROLE: !Ref pAuditRole
+          EMAIL_FROM: !Ref pEmailFrom
+          EMAIL_TO: !Ref pEmailTo
 
   EnableGuardDutyLambdaFunctionPermission:
     Type: AWS::Lambda::Permission
+    Condition: Subscribe
     Properties:
       FunctionName: !GetAtt EnableGuardDutyLambdaFunction.Arn
       Principal: sns.amazonaws.com
@@ -111,6 +134,7 @@ Resources:
 
   EnableGuardDutyLambdaFunctionSubscription:
     Type: AWS::SNS::Subscription
+    Condition: Subscribe
     Properties:
       Endpoint: !GetAtt [EnableGuardDutyLambdaFunction, Arn]
       Protocol: lambda
