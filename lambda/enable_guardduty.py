@@ -9,7 +9,7 @@ import time
 
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 # Quiet Boto3
 logging.getLogger('botocore').setLevel(logging.WARNING)
 logging.getLogger('boto3').setLevel(logging.WARNING)
@@ -23,12 +23,11 @@ def handler(event, context):
     '''
     message = {
         'account_id': 'string',
-        'message': 'string',  // optional, if un-specified, ENV var (from CFT)
         'dry_run': true|false,  // optional, if un-specified, dry_run=false
         'region': ['string'],  // optional, if un-specified, runs all regions
     }
     '''
-    logger.info("Received event: " + json.dumps(event, sort_keys=True))
+    logger.debug("Received event: " + json.dumps(event, sort_keys=True))
     message = json.loads(event['Records'][0]['Sns']['Message'])
     logger.info("Received message: " + json.dumps(message, sort_keys=True))
 
@@ -45,7 +44,7 @@ def handler(event, context):
     # describe account (from payer account)
     message["account_info"] = describe_account(message)
 
-    # add other message attributes as necessary
+    # add optional message attributes as necessary
     process_message(message)
 
     # process each region in the request
@@ -56,6 +55,7 @@ def handler(event, context):
 def process_region(event, region):
     logger.info(f"Processing Region: {region}")
 
+    # Local client in the GD Master account
     gd_client = boto3.client('guardduty', region_name=region)
     try:
         response = gd_client.list_detectors()
@@ -66,7 +66,11 @@ def process_region(event, region):
             # An account can only have one detector per region
             detector_id = response['DetectorIds'][0]
     except ClientError as e:
-        logger.error(f"Unable to list detectors in region {region}. Error: {e}. Skipping region")
+        logger.error("Unable to list detectors in region {}. Skipping this region.".format(region))
+        return(False)
+    except EndpointConnectionError as e:
+        logger.error("Unable to connect to GuardDuty in region {}. Skipping this region.".format(region))
+        return(False)
 
     gd_status = get_all_members(region, gd_client, detector_id)
 
@@ -104,7 +108,7 @@ def create_masteraccount_detector(gd_client, event, region):
         return(response['DetectorId'])
     except ClientError as e:
         logger.error(f"Failed to create detector in {region}. Aborting...")
-        exit(1)
+        raise
 
 
 def get_all_members(region, gd_client, detector_id):
@@ -241,9 +245,7 @@ def describe_account(event):
 
 
 def process_message(message):
-    # if "message" not in message:
-    #     logger.info(f"message['message'] not specified; default = {os.environ['INVITE_MESSAGE']}")
-    #     event["message"] = os.environ['INVITE_MESSAGE']
+    '''Add in the optional elements of the message'''
 
     if "dry_run" not in message:
         logger.info("message['dry_run'] not specified; default = False")
