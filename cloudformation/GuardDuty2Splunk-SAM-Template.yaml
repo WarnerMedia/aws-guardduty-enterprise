@@ -17,8 +17,8 @@ Resources:
     Type: AWS::Serverless::Application
     Properties:
       Location:
-        ApplicationId: arn:aws:serverlessrepo:us-east-1:708419456681:applications/splunk-logging
-        SemanticVersion: 1.0.0
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:xxx:applications/splunk-json-logging
+        SemanticVersion: 0.0.1
       Parameters:
         # Token of your Splunk HTTP event collector endpoint
         SplunkHttpEventCollectorToken: !Ref SplunkHttpEventCollectorToken
