@@ -36,27 +36,22 @@ make BUCKET=SETME enable-deploy
 
 ## Deployment of the GuardDuty To Splunk Lambdas
 
-This is Deployed via the SAM application for Splunk logging. See the [AWS Console Page](https://console.aws.amazon.com/lambda/home?region=us-east-1#/create/app?applicationId=arn:aws:serverlessrepo:us-east-1:708419456681:applications/splunk-logging) for more info.
-
-The makefile will deploy it to all regions
-
-1. Install cfn-deploy
-```bash
-pip3 install cftdeploy
+1. Create A Secret in AWS Secrets Manager. By Default the Secret is named `GuardDutyHEC` and located in `us-east-1`. The format of the secret should be:
+```json
+{
+  "HECToken": "2SOMETHING-THAT-SHOULD-BE-SECRET",
+  "HECEndpoint": "https://hec.endpoint.yourcompany.com:8088/services/collector/event"
+}
 ```
-2. Make the Manifest
+2. Deploy it everywhere via the `deploy_splunk_to_all_regions.sh` script
 ```bash
-make BUCKET=SETME splunk-manifest
+~/aws-guardduty-enterprise$ ./scripts/deploy_splunk_to_all_regions.sh
 ```
-3. Edit the Manifest
-    1. SET the HEC Token and URL in the Manifest
-    2. Remove the region
-5. Deploy to all regions
-```bash
-make BUCKET=SETME splunk-deploy
-```
+The Script will deploy a CloudFormation Stack in each region named `GuardDuty2Splunk-$region` and wait for a successful deployment before proceeding to the next region. Modify this script if you didn't use the default secret name, secret region, or want to name the Lambda or CFT something else.
 
+3. You can remove the stacks in each region with the `./scripts/delete_splunk_stack_in_all_regions.sh` shell script.
 
+Note: There is no update script at the moment. Sorry.....
 
 ## Required format for the SNS Message for the Enable Lambda:
 The message published to SNS must contain the following element:

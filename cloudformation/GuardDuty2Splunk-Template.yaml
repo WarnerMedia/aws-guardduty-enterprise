@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy Lambda and other resources for AWS GuardDuty Management
+
+Parameters:
+
+  pHECSecretName:
+    Description: ARN of the Secrets Manager Secret with the HEC Endpoint and HEC Token
+    Type: String
+
+  pHECSecretRegion:
+    Description: Region where the HEC Token secret is stored
+    Type: String
+
+Resources:
+
+  GuardDuty2SplunkLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: LambdaLogging
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Resource: '*'
+            Action:
+            - logs:*
+            Effect: Allow
+      - PolicyName: GetSecret
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - secretsmanager:GetSecret*
+            Resource: !Sub "arn:aws:secretsmanager:${pHECSecretRegion}:${AWS::AccountId}:secret:${pHECSecretName}-*"
+
+
+  GuardDuty2SplunkLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-lambda"
+      Description: Push a CloudWatch Event to Splunk
+      Handler: index.handler
+      Runtime: python3.6
+      Timeout: 300
+      MemorySize: 768
+      Role: !GetAtt GuardDuty2SplunkLambdaRole.Arn
+      Environment:
+        Variables:
+          HEC_DATA: !Ref pHECSecretName
+          SECRET_REGION: !Ref pHECSecretRegion
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import boto3
+          from botocore.exceptions import ClientError
+          import botocore.vendored.requests as requests
+          from botocore.vendored.requests.exceptions import RequestException
+
+          import logging
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          # Quiet Boto3
+          logging.getLogger('botocore').setLevel(logging.WARNING)
+          logging.getLogger('boto3').setLevel(logging.WARNING)
+
+
+          def handler(event, _context):
+              logger.debug("Received event: " + json.dumps(event, sort_keys=True))
+              hec_data = get_secret(os.environ['HEC_DATA'], os.environ['SECRET_REGION'])
+              if hec_data is None:
+                  logger.critical(f"Unable to fetch secret {os.environ['HEC_DATA']}")
+                  raise Exception
+              logger.debug(f"HEC Endpoint: {hec_data['HECEndpoint']}")
+
+              message = {
+                  'event': event
+              }
+              try:
+                  r = requests.post(hec_data['HECEndpoint'],
+                      headers={"Authorization": f"Splunk {hec_data['HECToken']}"},
+                      data=json.dumps(message))
+                  if r.status_code != 200:
+                      logger.critical(f"Error: {r.text}")
+              except RequestException as e:
+                  logger.critical(f"Error: {str(e)}")
+
+
+          def get_secret(secret_name, region):
+              # Create a Secrets Manager client
+              session = boto3.session.Session()
+              client = session.client(service_name='secretsmanager', region_name=region)
+
+              try:
+                  get_secret_value_response = client.get_secret_value(
+                      SecretId=secret_name
+                  )
+              except ClientError as e:
+                  logger.critical(f"Client error {e} getting secret")
+                  raise e
+
+              else:
+                  # Decrypts secret using the associated KMS CMK.
+                  # Depending on whether the secret is a string or binary, one of these
+                  # fields will be populated.
+                  if 'SecretString' in get_secret_value_response:
+                      secret = get_secret_value_response['SecretString']
+                      return json.loads(secret)
+                  else:
+                      decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
+                      return(decoded_binary_secret)
+              return None
+
+          ### END OF CODE ###
+
+
+  GuardDutyCloudWatchEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: GuardDutyRuleForSplunk
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.guardduty
+      Targets:
+        - Arn: !GetAtt GuardDuty2SplunkLambdaFunction.Arn
+          Id: GuardDutyFunction
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      FunctionName: !Ref GuardDuty2SplunkLambdaFunction
+      SourceArn: !GetAtt GuardDutyCloudWatchEvent.Arn
+
+
+Outputs:
+  StackName:
+    Value: !Ref AWS::StackName
