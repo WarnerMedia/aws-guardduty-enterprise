@@ -11,6 +11,11 @@ Parameters:
     Description: Region where the HEC Token secret is stored
     Type: String
 
+  pAccountName:
+    Description: Field that is added to the GuardDuty Finding to identify which GuardDuty admin account the event came from. (leave as BLANK and no field will be added)
+    Type: String
+    Default: BLANK
+
 Resources:
 
   GuardDuty2SplunkLambdaRole:
@@ -59,6 +64,7 @@ Resources:
         Variables:
           HEC_DATA: !Ref pHECSecretName
           SECRET_REGION: !Ref pHECSecretRegion
+          ACCOUNT_NAME: !Ref pAccountName
       Code:
         ZipFile: |
           import json
@@ -75,14 +81,18 @@ Resources:
           logging.getLogger('botocore').setLevel(logging.WARNING)
           logging.getLogger('boto3').setLevel(logging.WARNING)
 
+          hec_data = get_secret(os.environ['HEC_DATA'], os.environ['SECRET_REGION'])
 
           def handler(event, _context):
               logger.debug("Received event: " + json.dumps(event, sort_keys=True))
-              hec_data = get_secret(os.environ['HEC_DATA'], os.environ['SECRET_REGION'])
+
               if hec_data is None:
                   logger.critical(f"Unable to fetch secret {os.environ['HEC_DATA']}")
                   raise Exception
               logger.debug(f"HEC Endpoint: {hec_data['HECEndpoint']}")
+
+              if os.environ['ACCOUNT_NAME'] != "BLANK":
+                  event['account_name'] = os.environ['ACCOUNT_NAME']
 
               message = {
                   'event': event
